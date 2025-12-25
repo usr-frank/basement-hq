@@ -1,49 +1,56 @@
-/* Modern Dark Dashboard Theme */
+/* BASEMENT HQ - MASTER THEME */
 
-/* Main Background */
+/* --- Default Theme (Green) --- */
+:root {
+    --primary-color: #10b981; /* Emerald Green */
+    --bg-color: #1e1e1e;
+    --card-bg: #1a1a1a;
+    --text-color: #ffffff;
+}
+
+/* --- Red Alert Theme --- */
+.red-theme {
+    --primary-color: #ef4444; /* Red */
+    --bg-color: #2b0a0a;      /* Dark Red Tint */
+    --card-bg: #450a0a;
+}
+
+/* App Background */
 .stApp {
-    background-color: #1e1e1e;
-    color: #ffffff;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    transition: background-color 0.5s ease;
 }
 
 /* Headers */
 h1, h2, h3, h4, h5, h6 {
-    color: #10b981 !important;
+    color: var(--primary-color) !important;
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-}
-
-/* Metric Labels */
-div[data-testid="stMetricLabel"] > label {
-    color: #b0b0b0 !important;
 }
 
 /* Metric Values */
 div[data-testid="stMetricValue"] {
-    color: #10b981 !important;
+    color: var(--primary-color) !important;
 }
 
-/* Card / Container Styling (The New Console Look) */
+/* Cards / Containers */
 div[data-testid="stVerticalBlockBorderWrapper"] {
-    background-color: #1a1a1a;
-    border: 1px solid #10b981 !important;
+    background-color: var(--card-bg);
+    border: 1px solid var(--primary-color) !important;
     border-radius: 10px;
     padding: 1rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    transition: all 0.5s ease;
 }
 
-/* Progress Bar Color */
+/* Progress Bars */
 div[data-testid="stProgress"] > div > div > div {
-    background-color: #10b981 !important;
+    background-color: var(--primary-color) !important;
 }
 
-/* Sidebar (Optional styling if used later) */
-section[data-testid="stSidebar"] {
-    background-color: #252526;
-}
-
-/* Buttons (Generic) */
-button {
-    background-color: #10b981 !important;
+/* Buttons */
+div.stButton > button {
+    background-color: var(--primary-color) !important;
     color: #ffffff !important;
     border: none !important;
 }
