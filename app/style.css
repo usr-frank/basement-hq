@@ -1,0 +1,54 @@
+/* Modern Dark Dashboard Theme */
+
+/* Main Background */
+.stApp {
+    background-color: #1e1e1e;
+    color: #ffffff;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+    color: #10b981 !important;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+/* Metric Labels */
+div[data-testid="stMetricLabel"] > label {
+    color: #b0b0b0 !important;
+}
+
+/* Metric Values */
+div[data-testid="stMetricValue"] {
+    color: #10b981 !important;
+}
+
+/* Card / Container Styling */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: #1a1a1a;
+    border: 1px solid #10b981 !important;
+    border-radius: 10px;
+    padding: 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Remove default container border if streamlit adds one differently,
+   but enforcing ours with !important usually works.
+   Streamlit's border container creates a div with data-testid="stVerticalBlockBorderWrapper" > div > div...
+*/
+
+/* Progress Bar Color */
+div[data-testid="stProgress"] > div > div > div {
+    background-color: #10b981 !important;
+}
+
+/* Sidebar (Optional styling if used later) */
+section[data-testid="stSidebar"] {
+    background-color: #252526;
+}
+
+/* Buttons (Generic) */
+button {
+    background-color: #10b981 !important;
+    color: #ffffff !important;
+    border: none !important;
+}
