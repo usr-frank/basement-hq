@@ -1,0 +1,35 @@
+/* Modern Dark Dashboard Theme */
+
+/* Main Background */
+.stApp {
+    background-color: #1e1e1e;
+    color: #ffffff;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+    color: #10b981 !important;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+/* Metric Labels */
+div[data-testid="stMetricLabel"] > label {
+    color: #b0b0b0 !important;
+}
+
+/* Metric Values */
+div[data-testid="stMetricValue"] {
+    color: #10b981 !important;
+}
+
+/* Sidebar (Optional styling if used later) */
+section[data-testid="stSidebar"] {
+    background-color: #252526;
+}
+
+/* Buttons (Generic) */
+button {
+    background-color: #10b981 !important;
+    color: #ffffff !important;
+    border: none !important;
+}
