@@ -22,6 +22,20 @@ div[data-testid="stMetricValue"] {
     color: #10b981 !important;
 }
 
+/* Card / Container Styling (The New Console Look) */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: #1a1a1a;
+    border: 1px solid #10b981 !important;
+    border-radius: 10px;
+    padding: 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Progress Bar Color */
+div[data-testid="stProgress"] > div > div > div {
+    background-color: #10b981 !important;
+}
+
 /* Sidebar (Optional styling if used later) */
 section[data-testid="stSidebar"] {
     background-color: #252526;
