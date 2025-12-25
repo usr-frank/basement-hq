@@ -2,218 +2,183 @@ import streamlit as st
 import psutil
 import time
 import requests
-import socket
 import pandas as pd
+import socket
+import os
 
-# --- Logic Functions ---
+# --- 1. CONFIGURATION & STATE ---
+st.set_page_config(page_title="Basement HQ", layout="wide")
 
-def load_css(theme_mode):
-    """
-    Reads style.css and replaces placeholders based on the selected theme.
-    """
-    if theme_mode == 'red':
-        accent = "#ef4444"  # Red
-        bg_color = "#1a0505" # Dark Reddish Tint
-        card_bg = "#2a1010"
+if 'red_alert' not in st.session_state:
+    st.session_state.red_alert = False
+
+# For Network Speed Calculation
+if 'net_last_time' not in st.session_state:
+    st.session_state.net_last_time = time.time()
+    st.session_state.net_last_io = psutil.net_io_counters()
+
+# --- 2. HELPER FUNCTIONS ---
+
+def inject_custom_css():
+    # Load the CSS file content
+    css_file = "app/style.css"
+    if not os.path.exists(css_file):
+        css_file = "style.css" # Fallback
+    
+    with open(css_file) as f:
+        style_content = f.read()
+
+    # If Red Alert is Active, wrap the app in a specific class or inject variables
+    # For simplicity, we will replace the CSS variables dynamically here
+    if st.session_state.red_alert:
+        # Quick-swap to Red Theme variables
+        theme_override = """
+        :root {
+            --primary-color: #ef4444 !important;
+            --bg-color: #2b0a0a !important;
+            --card-bg: #450a0a !important;
+        }
+        """
+        st.markdown(f'<style>{style_content}\n{theme_override}</style>', unsafe_allow_html=True)
     else:
-        accent = "#10b981"  # Green
-        bg_color = "#1e1e1e" # Dark Grey
-        card_bg = "#1a1a1a"
-
-    try:
-        with open("app/style.css") as f:
-            css_template = f.read()
-    except FileNotFoundError:
-        try:
-            with open("style.css") as f:
-                css_template = f.read()
-        except:
-            return
-
-    css = css_template.replace("{{ACCENT_COLOR}}", accent)\
-                      .replace("{{BG_COLOR}}", bg_color)\
-                      .replace("{{CARD_BG}}", card_bg)
-
-    st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
+        st.markdown(f'<style>{style_content}</style>', unsafe_allow_html=True)
 
 def get_weather():
-    """Fetches current weather for Laval, Quebec."""
+    # Laval, Quebec Coordinates
+    LAT = 45.57
+    LON = -73.75
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current_weather=true"
+    
     try:
-        # Laval coordinates: 45.57, -73.75
-        url = "https://api.open-meteo.com/v1/forecast?latitude=45.57&longitude=-73.75&current_weather=true"
         response = requests.get(url, timeout=2)
-        if response.status_code == 200:
-            data = response.json().get("current_weather", {})
-            temp = data.get("temperature")
-            # Simple WMO code mapping
-            code = data.get("weathercode")
-            condition = "Unknown"
-            if code == 0: condition = "Clear"
-            elif 1 <= code <= 3: condition = "Partly Cloudy"
-            elif code in [45, 48]: condition = "Fog"
-            elif 51 <= code <= 67: condition = "Rain"
-            elif 71 <= code <= 77: condition = "Snow"
-            elif code >= 95: condition = "Thunderstorm"
-
-            return temp, condition
+        data = response.json()
+        temp = data['current_weather']['temperature']
+        code = data['current_weather']['weathercode']
+        # Simple code map
+        condition = "Clear"
+        if code > 3: condition = "Cloudy"
+        if code > 50: condition = "Rainy"
+        if code > 70: condition = "Snow"
+        
+        return temp, condition
     except:
-        pass
-    return None, "N/A"
+        return "N/A", "Offline"
 
-def get_network_speed():
-    """Calculates upload/download speed based on delta since last call."""
-    counters = psutil.net_io_counters()
-    now = time.time()
-
-    if 'net_last_counters' not in st.session_state:
-        st.session_state['net_last_counters'] = counters
-        st.session_state['net_last_time'] = now
-        return 0.0, 0.0 # First run, no delta
-
-    last_counters = st.session_state['net_last_counters']
-    last_time = st.session_state['net_last_time']
-
-    delta_time = now - last_time
-    if delta_time <= 0: return 0.0, 0.0 # Avoid div by zero
-
-    bytes_recv = counters.bytes_recv - last_counters.bytes_recv
-    bytes_sent = counters.bytes_sent - last_counters.bytes_sent
-
-    # Update state
-    st.session_state['net_last_counters'] = counters
-    st.session_state['net_last_time'] = now
-
-    # Convert to KB/s
-    down_speed = (bytes_recv / 1024) / delta_time
-    up_speed = (bytes_sent / 1024) / delta_time
-
-    return round(down_speed, 1), round(up_speed, 1)
-
-def check_connectivity(host, port):
-    """Checks TCP connectivity to a host:port."""
+def check_ping(host):
+    # Pure Python Ping (Socket Connect)
+    # Returns True if reachable on port 80 (HTTP)
     try:
-        # Use a short timeout for responsiveness
-        sock = socket.create_connection((host, port), timeout=1)
+        sock = socket.create_connection((host, 80), timeout=1)
         sock.close()
         return True
     except:
         return False
 
 def get_top_hogs():
-    """Returns a DataFrame of top 5 memory hogs."""
+    # Get top 5 processes by Memory
     processes = []
     for proc in psutil.process_iter(['pid', 'name', 'memory_percent']):
         try:
-            pinfo = proc.info
-            processes.append(pinfo)
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            processes.append(proc.info)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
-
+    
     df = pd.DataFrame(processes)
     if not df.empty:
         df = df.sort_values(by='memory_percent', ascending=False).head(5)
         df['memory_percent'] = df['memory_percent'].apply(lambda x: f"{x:.1f}%")
-        # Clean columns
-        df = df[['name', 'pid', 'memory_percent']]
-        df.columns = ["Process", "PID", "Memory %"]
-        return df
+        return df[['name', 'pid', 'memory_percent']]
     return pd.DataFrame()
 
-# --- UI Layout ---
+# --- 3. MAIN DASHBOARD ---
 
+# Auto-refresh every 2 seconds
 @st.fragment(run_every=2)
-def display_dashboard():
-    # --- Row 1: System Health (Existing) ---
-    st.header("System Health")
+def render_dashboard():
+    
+    # -- ROW 1: HEADER & ALERTS --
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        st.title("BASEMENT HQ // COMMAND")
+    with c2:
+        # Red Alert Toggle
+        mode = st.toggle("🚨 RED ALERT", value=st.session_state.red_alert)
+        if mode != st.session_state.red_alert:
+            st.session_state.red_alert = mode
+            st.rerun()
+
+    st.markdown("---")
+
+    # -- ROW 2: ENVIRONMENT & HEALTH --
+    col_weather, col_cpu, col_ram, col_disk = st.columns(4)
+
+    # Weather
+    temp, cond = get_weather()
+    with col_weather:
+        with st.container(border=True):
+            st.metric("Laval, QC", f"{temp}°C", cond)
+
+    # System Stats
     cpu = psutil.cpu_percent(interval=None)
     ram = psutil.virtual_memory().percent
     disk = psutil.disk_usage('/').percent
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
+    with col_cpu:
         with st.container(border=True):
-            st.metric("CPU", f"{cpu}%")
+            st.metric("CPU Load", f"{cpu}%")
             st.progress(cpu / 100)
-    with c2:
+    
+    with col_ram:
         with st.container(border=True):
-            st.metric("RAM", f"{ram}%")
+            st.metric("RAM Usage", f"{ram}%")
             st.progress(ram / 100)
-    with c3:
+
+    with col_disk:
         with st.container(border=True):
-            st.metric("Disk", f"{disk}%")
+            st.metric("Disk Space", f"{disk}%")
             st.progress(disk / 100)
 
-    st.markdown("---")
+    # -- ROW 3: NETWORK & COMMS --
+    st.subheader("Uplink Status")
+    net_col, ping_col = st.columns([2, 1])
 
-    # --- Row 2: Uplink & Ping ---
-    col_uplink, col_ping = st.columns(2)
+    # Network Speed Logic
+    now = time.time()
+    current_io = psutil.net_io_counters()
+    
+    dt = now - st.session_state.net_last_time
+    if dt < 0.1: dt = 0.1 # Prevent divide by zero on fast refresh
 
-    # Uplink Monitor
-    down, up = get_network_speed()
-    with col_uplink:
-        st.subheader("Uplink Monitor")
+    # Bytes per second
+    rx_speed = (current_io.bytes_recv - st.session_state.net_last_io.bytes_recv) / dt
+    tx_speed = (current_io.bytes_sent - st.session_state.net_last_io.bytes_sent) / dt
+
+    # Update State
+    st.session_state.net_last_time = now
+    st.session_state.net_last_io = current_io
+
+    with net_col:
         with st.container(border=True):
-            uc1, uc2 = st.columns(2)
-            uc1.metric("Download", f"{down} KB/s")
-            uc2.metric("Upload", f"{up} KB/s")
+            nc1, nc2 = st.columns(2)
+            nc1.metric("Download", f"{rx_speed/1024/1024:.2f} MB/s")
+            nc2.metric("Upload", f"{tx_speed/1024/1024:.2f} MB/s")
 
     # Ping Radar
-    google_ok = check_connectivity("8.8.8.8", 53)
-    # Using github.com:443 for second check
-    github_ok = check_connectivity("github.com", 443)
-
-    with col_ping:
-        st.subheader("Ping Radar")
+    google_up = check_ping("google.com")
+    github_up = check_ping("github.com")
+    
+    with ping_col:
         with st.container(border=True):
-            pc1, pc2 = st.columns(2)
-            pc1.metric("Google DNS", "ONLINE" if google_ok else "OFFLINE")
-            pc2.metric("GitHub", "ONLINE" if github_ok else "OFFLINE")
+            st.write("Connectivity Radar")
+            st.markdown(f"**Google:** {'🟢 Online' if google_up else '🔴 Offline'}")
+            st.markdown(f"**GitHub:** {'🟢 Online' if github_up else '🔴 Offline'}")
 
-    st.markdown("---")
-
-    # --- Row 3: Top Hogs ---
-    st.subheader("Top Hogs")
+    # -- ROW 4: TOP HOGS --
+    st.subheader("Process Monitor (Top Hogs)")
     df_hogs = get_top_hogs()
-    st.dataframe(df_hogs, use_container_width=True, hide_index=True)
+    st.dataframe(df_hogs, hide_index=True, use_container_width=True)
 
-
-def main():
-    st.set_page_config(page_title="Basement HQ", layout="wide")
-
-    # Initialize session state for theme
-    if "theme" not in st.session_state:
-        st.session_state.theme = "green"
-
-    # --- Top Bar: Weather & Toggle ---
-    top_col1, top_col2 = st.columns([3, 1])
-
-    with top_col1:
-        temp, condition = get_weather()
-        if temp is None:
-            st.metric("Laval, QC", "N/A")
-        else:
-            st.metric(f"Laval, QC: {condition}", f"{temp}°C")
-
-    with top_col2:
-        # Theme Switcher
-        # We use a unique key to update session state automatically or handle it manually.
-        # Here we manually check value to set state.
-        current_val = (st.session_state.theme == "red")
-        red_alert = st.toggle("Red Alert Mode", value=current_val)
-
-        if red_alert:
-            st.session_state.theme = "red"
-        else:
-            st.session_state.theme = "green"
-
-    # Load CSS dynamically based on state
-    load_css(st.session_state.theme)
-
-    st.title("BASEMENT HQ")
-    st.markdown("---")
-
-    # Main Dashboard Logic (Auto-Refreshes)
-    display_dashboard()
-
+# --- 4. APP ENTRY POINT ---
 if __name__ == "__main__":
-    main()
+    inject_custom_css()
+    render_dashboard()
