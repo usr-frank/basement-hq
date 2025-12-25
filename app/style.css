@@ -22,7 +22,7 @@ div[data-testid="stMetricValue"] {
     color: #10b981 !important;
 }
 
-/* Card / Container Styling */
+/* Card / Container Styling (The New Console Look) */
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background-color: #1a1a1a;
     border: 1px solid #10b981 !important;
@@ -30,11 +30,6 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     padding: 1rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
-
-/* Remove default container border if streamlit adds one differently,
-   but enforcing ours with !important usually works.
-   Streamlit's border container creates a div with data-testid="stVerticalBlockBorderWrapper" > div > div...
-*/
 
 /* Progress Bar Color */
 div[data-testid="stProgress"] > div > div > div {
