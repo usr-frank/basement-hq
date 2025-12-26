@@ -1,65 +1,79 @@
-/* Modern Dark Dashboard Theme */
+/* BASEMENT HQ - MASTER THEME */
 
-/* Main Background */
-.stApp {
-    background-color: {{BG_COLOR}};
-    color: #ffffff;
+/* --- Default Theme (Green) --- */
+:root {
+    --primary-color: #10b981; /* Emerald Green */
+    --bg-color: #1e1e1e;
+    --card-bg: #1a1a1a;
+    --text-color: #ffffff;
 }
+
+/* --- Red Alert Theme --- */
+.red-theme {
+    --primary-color: #ef4444; /* Red */
+    --bg-color: #2b0a0a;      /* Dark Red Tint */
+    --card-bg: #450a0a;
+}
+
+/* App Background */
+.stApp {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    transition: background-color 0.5s ease;
+}
+
+/* --- KIOSK MODE (Hide Streamlit UI) --- */
+/* Hide the Hamburger Menu */
+div[data-testid="stToolbar"] {
+    visibility: hidden;
+    height: 0%;
+    position: fixed;
+}
+/* Hide the Footer */
+footer {
+    visibility: hidden;
+    height: 0%;
+}
+/* Hide the Deploy Button */
+div[data-testid="stHeader"] {
+    visibility: hidden;
+    height: 0%;
+}
+/* Add padding to top since header is gone */
+.block-container {
+    padding-top: 2rem !important;
+}
+
 
 /* Headers */
 h1, h2, h3, h4, h5, h6 {
-    color: {{ACCENT_COLOR}} !important;
+    color: var(--primary-color) !important;
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-}
-
-/* Metric Labels */
-div[data-testid="stMetricLabel"] > label {
-    color: #b0b0b0 !important;
 }
 
 /* Metric Values */
 div[data-testid="stMetricValue"] {
-    color: {{ACCENT_COLOR}} !important;
+    color: var(--primary-color) !important;
 }
 
-/* Card / Container Styling */
+/* Cards / Containers */
 div[data-testid="stVerticalBlockBorderWrapper"] {
-    background-color: {{CARD_BG}};
-    border: 1px solid {{ACCENT_COLOR}} !important;
+    background-color: var(--card-bg);
+    border: 1px solid var(--primary-color) !important;
     border-radius: 10px;
     padding: 1rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    transition: all 0.5s ease;
 }
 
-/* Progress Bar Color */
+/* Progress Bars */
 div[data-testid="stProgress"] > div > div > div {
-    background-color: {{ACCENT_COLOR}} !important;
+    background-color: var(--primary-color) !important;
 }
 
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    background-color: #252526;
-}
-
-/* Buttons (Generic) */
-button {
-    background-color: {{ACCENT_COLOR}} !important;
+/* Buttons */
+div.stButton > button {
+    background-color: var(--primary-color) !important;
     color: #ffffff !important;
     border: none !important;
-}
-
-/* --- KIOSK MODE / FULL SCREEN --- */
-/* Hide the Streamlit Hamburger Menu */
-div[data-testid="stToolbar"] {
-    display: none;
-}
-
-/* Hide the 'Made with Streamlit' Footer */
-footer {
-    visibility: hidden;
-}
-
-/* Hide the Deploy Button (header decoration) */
-div[data-testid="stHeader"] {
-    display: none;
 }

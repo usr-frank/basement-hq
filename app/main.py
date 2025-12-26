@@ -7,10 +7,10 @@ import socket
 import os
 from dotenv import load_dotenv
 
-# --- 0. INITIALIZATION ---
+# --- 1. CONFIGURATION & STATE ---
+# Load secrets from .env file
 load_dotenv()
 
-# --- 1. CONFIGURATION & STATE ---
 st.set_page_config(page_title="Basement HQ", layout="wide")
 
 if 'red_alert' not in st.session_state:
@@ -23,69 +23,66 @@ if 'net_last_time' not in st.session_state:
 
 # --- 2. HELPER FUNCTIONS ---
 
-def save_secrets(secrets_dict):
-    """Writes key-value pairs to .env file."""
-    # We read existing lines first to preserve other keys if needed,
-    # but for this simple task, appending or overwriting is fine.
-    # A robust way is to read the file, update lines, and write back.
-    # Here we will just append or update based on a simple parsing.
-
+def save_secrets(key, value):
+    """Simple helper to write a secret to .env file"""
+    # Read existing lines
     lines = []
     if os.path.exists(".env"):
         with open(".env", "r") as f:
             lines = f.readlines()
-
-    # Create a mapping from existing file
-    current_env = {}
+    
+    # Check if key exists and update it
+    key_found = False
+    new_lines = []
     for line in lines:
-        if "=" in line:
-            k, v = line.strip().split("=", 1)
-            current_env[k] = v
-
-    # Update with new values
-    for k, v in secrets_dict.items():
-        if v: # Only save if not empty
-            current_env[k] = str(v)
-            # Also update current session env so we don't need reload
-            os.environ[k] = str(v)
-
+        if line.startswith(f"{key}="):
+            new_lines.append(f"{key}={value}\n")
+            key_found = True
+        else:
+            new_lines.append(line)
+    
+    # If not found, append it
+    if not key_found:
+        if new_lines and not new_lines[-1].endswith("\n"):
+            new_lines[-1] += "\n"
+        new_lines.append(f"{key}={value}\n")
+    
     # Write back
     with open(".env", "w") as f:
-        for k, v in current_env.items():
-            f.write(f"{k}={v}\n")
+        f.writelines(new_lines)
+    
+    # Reload environment immediately for this session
+    os.environ[key] = value
 
 def inject_custom_css():
     # Load the CSS file content
     css_file = "app/style.css"
     if not os.path.exists(css_file):
         css_file = "style.css" # Fallback
-
+    
     with open(css_file) as f:
         style_content = f.read()
 
-    # Dynamic Theme Replacement
+    # If Red Alert is Active, inject red variables
     if st.session_state.red_alert:
-        accent = "#ef4444"
-        bg_color = "#2b0a0a"
-        card_bg = "#450a0a"
+        theme_override = """
+        :root {
+            --primary-color: #ef4444 !important;
+            --bg-color: #2b0a0a !important;
+            --card-bg: #450a0a !important;
+        }
+        """
+        st.markdown(f'<style>{style_content}\n{theme_override}</style>', unsafe_allow_html=True)
     else:
-        accent = "#10b981"
-        bg_color = "#1e1e1e"
-        card_bg = "#1a1a1a"
-
-    css = style_content.replace("{{ACCENT_COLOR}}", accent)\
-                       .replace("{{BG_COLOR}}", bg_color)\
-                       .replace("{{CARD_BG}}", card_bg)
-
-    st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
+        st.markdown(f'<style>{style_content}</style>', unsafe_allow_html=True)
 
 def get_weather():
-    # Laval, Quebec Coordinates Default
-    LAT = os.getenv("OPEN_METEO_LAT", "45.57")
-    LON = os.getenv("OPEN_METEO_LONG", "-73.75")
-
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current_weather=true"
-
+    # Try to get coordinates from Secrets, default to Laval
+    lat = os.getenv("OPEN_METEO_LAT", "45.57")
+    lon = os.getenv("OPEN_METEO_LONG", "-73.75")
+    
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+    
     try:
         response = requests.get(url, timeout=2)
         data = response.json()
@@ -96,14 +93,13 @@ def get_weather():
         if code > 3: condition = "Cloudy"
         if code > 50: condition = "Rainy"
         if code > 70: condition = "Snow"
-
+        
         return temp, condition
     except:
         return "N/A", "Offline"
 
 def check_ping(host):
     # Pure Python Ping (Socket Connect)
-    # Returns True if reachable on port 80 (HTTP)
     try:
         sock = socket.create_connection((host, 80), timeout=1)
         sock.close()
@@ -119,7 +115,7 @@ def get_top_hogs():
             processes.append(proc.info)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
-
+    
     df = pd.DataFrame(processes)
     if not df.empty:
         df = df.sort_values(by='memory_percent', ascending=False).head(5)
@@ -132,7 +128,7 @@ def get_top_hogs():
 # Auto-refresh every 2 seconds
 @st.fragment(run_every=2)
 def render_dashboard():
-
+    
     # -- ROW 1: HEADER & ALERTS --
     c1, c2 = st.columns([3, 1])
     with c1:
@@ -153,7 +149,7 @@ def render_dashboard():
     temp, cond = get_weather()
     with col_weather:
         with st.container(border=True):
-            st.metric("Laval, QC", f"{temp}°C", cond)
+            st.metric("Weather", f"{temp}°C", cond)
 
     # System Stats
     cpu = psutil.cpu_percent(interval=None)
@@ -164,7 +160,7 @@ def render_dashboard():
         with st.container(border=True):
             st.metric("CPU Load", f"{cpu}%")
             st.progress(cpu / 100)
-
+    
     with col_ram:
         with st.container(border=True):
             st.metric("RAM Usage", f"{ram}%")
@@ -182,9 +178,9 @@ def render_dashboard():
     # Network Speed Logic
     now = time.time()
     current_io = psutil.net_io_counters()
-
+    
     dt = now - st.session_state.net_last_time
-    if dt < 0.1: dt = 0.1 # Prevent divide by zero on fast refresh
+    if dt < 0.1: dt = 0.1 # Prevent divide by zero
 
     # Bytes per second
     rx_speed = (current_io.bytes_recv - st.session_state.net_last_io.bytes_recv) / dt
@@ -203,7 +199,7 @@ def render_dashboard():
     # Ping Radar
     google_up = check_ping("google.com")
     github_up = check_ping("github.com")
-
+    
     with ping_col:
         with st.container(border=True):
             st.write("Connectivity Radar")
@@ -215,31 +211,39 @@ def render_dashboard():
     df_hogs = get_top_hogs()
     st.dataframe(df_hogs, hide_index=True, use_container_width=True)
 
-# --- 4. APP ENTRY POINT ---
-if __name__ == "__main__":
-    inject_custom_css()
-
-    # 1. Render Dashboard
-    render_dashboard()
-
-    # 2. Render Admin UI (Outside fragment to avoid reset on refresh)
-    st.markdown("---")
-    with st.expander("⚙️ System Configuration"):
-        with st.form("config_form"):
-            lat = st.text_input("Latitude", value=os.getenv("OPEN_METEO_LAT", ""))
-            lon = st.text_input("Longitude", value=os.getenv("OPEN_METEO_LONG", ""))
-            jelly = st.text_input("Jellyfin API Key", value=os.getenv("JELLYFIN_API_KEY", ""), type="password")
-            adguard = st.text_input("AdGuard Username", value=os.getenv("ADGUARD_USERNAME", ""))
-
-            submitted = st.form_submit_button("Save Configuration")
+# --- 4. ADMIN PANEL (Secrets) ---
+def render_admin_panel():
+    with st.expander("⚙️ System Configuration (Secure Vault)"):
+        st.write("Update API Keys and Settings. Changes are saved to `.env`.")
+        
+        # Load current values
+        current_lat = os.getenv("OPEN_METEO_LAT", "45.57")
+        current_lon = os.getenv("OPEN_METEO_LONG", "-73.75")
+        current_jf_key = os.getenv("JELLYFIN_API_KEY", "")
+        current_ad_user = os.getenv("ADGUARD_USERNAME", "")
+        
+        # Input Form
+        with st.form("secrets_form"):
+            c1, c2 = st.columns(2)
+            new_lat = c1.text_input("Latitude", value=current_lat)
+            new_lon = c2.text_input("Longitude", value=current_lon)
+            
+            new_jf = st.text_input("Jellyfin API Key", value=current_jf_key, type="password")
+            new_ad = st.text_input("AdGuard Username", value=current_ad_user)
+            
+            submitted = st.form_submit_button("💾 Save Configuration")
+            
             if submitted:
-                secrets = {
-                    "OPEN_METEO_LAT": lat,
-                    "OPEN_METEO_LONG": lon,
-                    "JELLYFIN_API_KEY": jelly,
-                    "ADGUARD_USERNAME": adguard
-                }
-                save_secrets(secrets)
+                save_secrets("OPEN_METEO_LAT", new_lat)
+                save_secrets("OPEN_METEO_LONG", new_lon)
+                save_secrets("JELLYFIN_API_KEY", new_jf)
+                save_secrets("ADGUARD_USERNAME", new_ad)
                 st.success("Configuration Saved! Reloading...")
                 time.sleep(1)
                 st.rerun()
+
+# --- 5. APP ENTRY POINT ---
+if __name__ == "__main__":
+    inject_custom_css()
+    render_dashboard()
+    render_admin_panel()
