@@ -2,6 +2,7 @@ import streamlit as st
 import psutil
 import time
 import requests
+from requests.auth import HTTPBasicAuth
 import pandas as pd
 import socket
 import os
@@ -102,12 +103,6 @@ def inject_custom_css():
     bg_css = ""
     bg_path = "app/assets/background.png"
     if os.path.exists(bg_path):
-        # We need to serve the file or read it as base64 to display it?
-        # Actually Streamlit serves 'app/static' by default if configured, but here we are in main app.
-        # However, for local file references in CSS to work in Streamlit, it usually needs to be served via st.image or hosted.
-        # But 'stApp' background-image url needs to be accessible by the browser.
-        # Since we cannot easily serve 'app/assets' as static without extra config (like st.static),
-        # we will encode it to base64 for the CSS injection.
         import base64
         with open(bg_path, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode()
@@ -186,6 +181,29 @@ def get_jellyfin_stats():
     except requests.exceptions.RequestException:
         return "Offline", "Connection Lost"
 
+def get_adguard_stats():
+    base_url = os.getenv("ADGUARD_URL", "http://192.168.0.200:80").rstrip("/")
+    username = os.getenv("ADGUARD_USERNAME", "")
+    password = os.getenv("ADGUARD_PASSWORD", "")
+
+    url = f"{base_url}/control/stats"
+    try:
+        response = requests.get(url, auth=HTTPBasicAuth(username, password), timeout=3)
+        response.raise_for_status()
+        data = response.json()
+
+        total = data.get("num_dns_queries", 0)
+        blocked = data.get("num_blocked_filtering", 0)
+
+        if total > 0:
+            percentage = (blocked / total) * 100
+        else:
+            percentage = 0.0
+
+        return total, blocked, percentage
+    except (requests.exceptions.RequestException, ValueError):
+        return "N/A", "Offline", 0.0
+
 def check_ping(host):
     try:
         sock = socket.create_connection((host, 80), timeout=1)
@@ -250,12 +268,15 @@ def get_docker_containers():
 
 @st.fragment(run_every=2)
 def render_command():
-    # ROW 1: Weather & Network
+    # ROW 1: Weather & Network & Ping & Jellyfin
     col_w, col_n, col_p, col_m = st.columns(4)
+
+    # Weather
     temp, cond = get_weather()
     with col_w:
         with st.container(border=True): st.metric("Weather", f"{temp}°C", cond)
 
+    # Network IO
     now = time.time()
     current_io = psutil.net_io_counters()
     dt = now - st.session_state.net_last_time
@@ -271,19 +292,49 @@ def render_command():
             sub_c1.metric("DL", f"{rx/1024/1024:.2f} MB/s")
             sub_c2.metric("UL", f"{tx/1024/1024:.2f} MB/s")
 
-    g_up = check_ping("google.com")
-    gh_up = check_ping("github.com")
+    # Custom Pings
+    p1_host = os.getenv("PING_HOST_1", "google.com")
+    p1_label = os.getenv("PING_LABEL_1", "Google")
+    p2_host = os.getenv("PING_HOST_2", "github.com")
+    p2_label = os.getenv("PING_LABEL_2", "GitHub")
+
+    g_up = check_ping(p1_host)
+    gh_up = check_ping(p2_host)
     with col_p:
         with st.container(border=True):
             sub_p1, sub_p2 = st.columns(2)
-            sub_p1.markdown(f"**Google:** {'🟢' if g_up else '🔴'}")
-            sub_p2.markdown(f"**GitHub:** {'🟢' if gh_up else '🔴'}")
+            sub_p1.markdown(f"**{p1_label}:** {'🟢' if g_up else '🔴'}")
+            sub_p2.markdown(f"**{p2_label}:** {'🟢' if gh_up else '🔴'}")
 
+    # Jellyfin
     jf_label, jf_details = get_jellyfin_stats()
     with col_m:
         with st.container(border=True):
             st.metric("Jellyfin", jf_label)
             st.caption(jf_details)
+
+    # ROW 2: Network Defense (AdGuard)
+    st.subheader("🛡️ Network Defense")
+    ad_total, ad_blocked, ad_pct = get_adguard_stats()
+    col_ad1, col_ad2, col_ad3 = st.columns(3)
+
+    with col_ad1:
+        with st.container(border=True):
+            st.metric("Total Queries", ad_total)
+
+    with col_ad2:
+        with st.container(border=True):
+            st.metric("Ads Blocked", ad_blocked)
+
+    with col_ad3:
+        with st.container(border=True):
+            if isinstance(ad_pct, (int, float)):
+                st.metric("Efficiency", f"{ad_pct:.1f}%")
+            else:
+                st.metric("Efficiency", "N/A")
+
+    # Footer
+    st.caption(f"System Heartbeat: {time.strftime('%H:%M:%S')}")
 
 @st.fragment(run_every=5)
 def render_docker_fleet():
@@ -353,6 +404,12 @@ def render_admin():
     # c_app_logo is managed by file upload mostly now, but keeping env read for safety
     c_app_logo = os.getenv("APP_LOGO", "")
     
+    # Ping defaults
+    c_p1_host = os.getenv("PING_HOST_1", "google.com")
+    c_p1_label = os.getenv("PING_LABEL_1", "Google")
+    c_p2_host = os.getenv("PING_HOST_2", "github.com")
+    c_p2_label = os.getenv("PING_LABEL_2", "GitHub")
+
     c_hidden = os.getenv("HIDDEN_CONTAINERS", "")
     current_hidden = [x.strip() for x in c_hidden.split(",") if x.strip()]
     
@@ -386,6 +443,15 @@ def render_admin():
         st.subheader("Docker Config")
         n_hidden = st.multiselect("Hide Containers", options=all_names, default=current_hidden)
 
+        st.subheader("Network Configuration")
+        net1, net2 = st.columns(2)
+        n_p1_host = net1.text_input("Ping Target 1 (Host)", c_p1_host)
+        n_p1_label = net2.text_input("Ping Target 1 (Label)", c_p1_label)
+
+        net3, net4 = st.columns(2)
+        n_p2_host = net3.text_input("Ping Target 2 (Host)", c_p2_host)
+        n_p2_label = net4.text_input("Ping Target 2 (Label)", c_p2_label)
+
         st.subheader("System Secrets")
         c1, c2 = st.columns(2)
         n_lat = c1.text_input("Lat", c_lat)
@@ -413,7 +479,12 @@ def render_admin():
             save_secrets("ADGUARD_USERNAME", n_ad)
             save_secrets("ADGUARD_PASSWORD", n_ad_pass)
             save_secrets("APP_TITLE", n_title)
-            # If no logo uploaded, keep existing or what was there (we saved APP_LOGO above if uploaded)
+
+            # Save Ping Config
+            save_secrets("PING_HOST_1", n_p1_host)
+            save_secrets("PING_LABEL_1", n_p1_label)
+            save_secrets("PING_HOST_2", n_p2_host)
+            save_secrets("PING_LABEL_2", n_p2_label)
 
             save_secrets("DASHBOARD_THEME", c_theme)
             save_secrets("SYSTEM_FONT", c_font)
