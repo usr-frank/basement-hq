@@ -23,9 +23,6 @@ if not os.path.exists("app/assets"):
 if 'dashboard_theme' not in st.session_state:
     st.session_state.dashboard_theme = os.getenv("DASHBOARD_THEME", "Default")
 
-if 'system_font' not in st.session_state:
-    st.session_state.system_font = os.getenv("SYSTEM_FONT", "Sans Serif")
-
 if 'net_last_time' not in st.session_state:
     st.session_state.net_last_time = time.time()
     st.session_state.net_last_io = psutil.net_io_counters()
@@ -68,21 +65,39 @@ def inject_custom_css():
         style_content = ""
 
     theme = st.session_state.dashboard_theme
-    font_selection = st.session_state.system_font
 
-    # Font Imports & Rules
-    font_import = ""
-    font_family = "sans-serif"
+    # Custom Font Logic
+    font_face_css = ""
+    global_font_family = "sans-serif" # Fallback
 
-    if font_selection == "Monospace (Hacker)":
-        font_import = "@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&display=swap');"
-        font_family = "'Fira Code', monospace"
-    elif font_selection == "Orbitron (Sci-Fi)":
-        font_import = "@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');"
-        font_family = "'Orbitron', sans-serif"
-    elif font_selection == "Roboto (Clean)":
-        font_import = "@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');"
-        font_family = "'Roboto', sans-serif"
+    # Check for custom font files
+    font_path_ttf = "app/assets/custom_font.ttf"
+    font_path_otf = "app/assets/custom_font.otf"
+
+    found_font = None
+    fmt = None
+
+    if os.path.exists(font_path_ttf):
+        found_font = font_path_ttf
+        fmt = "truetype"
+    elif os.path.exists(font_path_otf):
+        found_font = font_path_otf
+        fmt = "opentype"
+
+    if found_font:
+        import base64
+        with open(found_font, "rb") as f:
+            b64_font = base64.b64encode(f.read()).decode()
+
+        font_face_css = f"""
+        @font-face {{
+            font-family: 'CustomFont';
+            src: url('data:font/{fmt};base64,{b64_font}') format('{fmt}');
+            font-weight: normal;
+            font-style: normal;
+        }}
+        """
+        global_font_family = "'CustomFont', sans-serif"
 
     # Theme Colors
     theme_css = ""
@@ -119,11 +134,11 @@ def inject_custom_css():
     # Global Font Injection
     global_font_css = f"""
     html, body, [class*="css"] {{
-        font-family: {font_family} !important;
+        font-family: {global_font_family} !important;
     }}
     """
 
-    st.markdown(f'<style>{font_import}\n{theme_css}\n{style_content}\n{global_font_css}\n{bg_css}</style>', unsafe_allow_html=True)
+    st.markdown(f'<style>{font_face_css}\n{theme_css}\n{style_content}\n{global_font_css}\n{bg_css}</style>', unsafe_allow_html=True)
 
 def get_weather():
     lat = os.getenv("OPEN_METEO_LAT", "45.57")
@@ -183,10 +198,14 @@ def get_jellyfin_stats():
 
 def get_adguard_stats():
     base_url = os.getenv("ADGUARD_URL", "http://192.168.0.200:80").rstrip("/")
+    if base_url.endswith("/control/stats"):
+        url = base_url
+    else:
+        url = f"{base_url}/control/stats"
+
     username = os.getenv("ADGUARD_USERNAME", "")
     password = os.getenv("ADGUARD_PASSWORD", "")
 
-    url = f"{base_url}/control/stats"
     try:
         response = requests.get(url, auth=HTTPBasicAuth(username, password), timeout=3)
         response.raise_for_status()
@@ -200,9 +219,17 @@ def get_adguard_stats():
         else:
             percentage = 0.0
 
-        return total, blocked, percentage
-    except (requests.exceptions.RequestException, ValueError):
-        return "N/A", "Offline", 0.0
+        return str(total), str(blocked), f"{percentage:.1f}%"
+
+    except requests.exceptions.HTTPError as e:
+        return "⚠️ Error", f"{e.response.status_code} {e.response.reason}", "Offline"
+    except requests.exceptions.ConnectionError:
+        return "⚠️ Error", "Connection Refused", "Offline"
+    except requests.exceptions.Timeout:
+        return "⚠️ Error", "Timeout", "Offline"
+    except (requests.exceptions.RequestException, ValueError) as e:
+        # Catch other request exceptions or JSON decoding errors
+        return "⚠️ Error", str(e)[:25], "Offline"
 
 def check_ping(host):
     try:
@@ -315,23 +342,20 @@ def render_command():
 
     # ROW 2: Network Defense (AdGuard)
     st.subheader("🛡️ Network Defense")
-    ad_total, ad_blocked, ad_pct = get_adguard_stats()
+    ad_label1, ad_label2, ad_label3 = get_adguard_stats()
     col_ad1, col_ad2, col_ad3 = st.columns(3)
 
     with col_ad1:
         with st.container(border=True):
-            st.metric("Total Queries", ad_total)
+            st.metric("Total Queries", ad_label1)
 
     with col_ad2:
         with st.container(border=True):
-            st.metric("Ads Blocked", ad_blocked)
+            st.metric("Ads Blocked", ad_label2)
 
     with col_ad3:
         with st.container(border=True):
-            if isinstance(ad_pct, (int, float)):
-                st.metric("Efficiency", f"{ad_pct:.1f}%")
-            else:
-                st.metric("Efficiency", "N/A")
+            st.metric("Efficiency", ad_label3)
 
     # Footer
     st.caption(f"System Heartbeat: {time.strftime('%H:%M:%S')}")
@@ -398,6 +422,7 @@ def render_admin():
     c_lon = os.getenv("OPEN_METEO_LONG", "-73.75")
     c_jf_url = os.getenv("JELLYFIN_URL", "http://192.168.0.200:8096")
     c_jf_key = os.getenv("JELLYFIN_API_KEY", "")
+    c_ad_url = os.getenv("ADGUARD_URL", "http://192.168.0.200:80")
     c_ad_user = os.getenv("ADGUARD_USERNAME", "")
     c_ad_pass = os.getenv("ADGUARD_PASSWORD", "")
     c_app_title = os.getenv("APP_TITLE", "BASEMENT HQ // COMMAND")
@@ -422,16 +447,12 @@ def render_admin():
     with st.form("secrets"):
         st.subheader("Personalization")
 
-        # Theme & Font
-        col_t, col_f = st.columns(2)
+        # Theme
+        col_t = st.columns(1)[0]
         c_theme = col_t.selectbox("Dashboard Theme",
             ["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"],
             index=["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"].index(st.session_state.dashboard_theme) if st.session_state.dashboard_theme in ["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"] else 0)
         
-        c_font = col_f.selectbox("System Font",
-            ["Sans Serif", "Monospace (Hacker)", "Orbitron (Sci-Fi)", "Roboto (Clean)"],
-            index=["Sans Serif", "Monospace (Hacker)", "Orbitron (Sci-Fi)", "Roboto (Clean)"].index(st.session_state.system_font) if st.session_state.system_font in ["Sans Serif", "Monospace (Hacker)", "Orbitron (Sci-Fi)", "Roboto (Clean)"] else 0)
-
         p1, p2 = st.columns(2)
         n_title = p1.text_input("App Title", c_app_title)
 
@@ -439,6 +460,7 @@ def render_admin():
         st.subheader("Asset Management")
         u_logo = st.file_uploader("Upload Logo (PNG)", type=["png"])
         u_bg = st.file_uploader("Upload Wallpaper (PNG)", type=["png"])
+        u_font = st.file_uploader("Upload Custom Font (TTF/OTF)", type=["ttf", "otf"])
 
         st.subheader("Docker Config")
         n_hidden = st.multiselect("Hide Containers", options=all_names, default=current_hidden)
@@ -458,6 +480,7 @@ def render_admin():
         n_lon = c2.text_input("Lon", c_lon)
         n_url = st.text_input("Jellyfin URL", c_jf_url)
         n_key = st.text_input("Jellyfin Key", c_jf_key, type="password")
+        n_ad_url = st.text_input("AdGuard URL", c_ad_url)
         n_ad = st.text_input("AdGuard User", c_ad_user)
         n_ad_pass = st.text_input("AdGuard Password", c_ad_pass, type="password")
 
@@ -472,10 +495,23 @@ def render_admin():
                 with open("app/assets/background.png", "wb") as f:
                     f.write(u_bg.getbuffer())
 
+            if u_font:
+                # Determine extension
+                ext = u_font.name.split(".")[-1].lower()
+                if ext in ["ttf", "otf"]:
+                    # Remove old files to avoid confusion
+                    if os.path.exists("app/assets/custom_font.ttf"): os.remove("app/assets/custom_font.ttf")
+                    if os.path.exists("app/assets/custom_font.otf"): os.remove("app/assets/custom_font.otf")
+
+                    target_path = f"app/assets/custom_font.{ext}"
+                    with open(target_path, "wb") as f:
+                        f.write(u_font.getbuffer())
+
             save_secrets("OPEN_METEO_LAT", n_lat)
             save_secrets("OPEN_METEO_LONG", n_lon)
             save_secrets("JELLYFIN_URL", n_url)
             save_secrets("JELLYFIN_API_KEY", n_key)
+            save_secrets("ADGUARD_URL", n_ad_url)
             save_secrets("ADGUARD_USERNAME", n_ad)
             save_secrets("ADGUARD_PASSWORD", n_ad_pass)
             save_secrets("APP_TITLE", n_title)
@@ -487,11 +523,9 @@ def render_admin():
             save_secrets("PING_LABEL_2", n_p2_label)
 
             save_secrets("DASHBOARD_THEME", c_theme)
-            save_secrets("SYSTEM_FONT", c_font)
             save_secrets("HIDDEN_CONTAINERS", ",".join(n_hidden))
             
             st.session_state.dashboard_theme = c_theme
-            st.session_state.system_font = c_font
             st.success("Saved! Reloading...")
             time.sleep(1)
             st.rerun()
