@@ -6,19 +6,14 @@
     --bg-color: #1e1e1e;
     --card-bg: #1a1a1a;
     --text-color: #ffffff;
-}
-
-/* --- Red Alert Theme --- */
-.red-theme {
-    --primary-color: #ef4444; /* Red */
-    --bg-color: #2b0a0a;      /* Dark Red Tint */
-    --card-bg: #450a0a;
+    --font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
 /* App Background */
 .stApp {
     background-color: var(--bg-color);
     color: var(--text-color);
+    font-family: var(--font-family);
     transition: background-color 0.5s ease;
 }
 
@@ -31,7 +26,7 @@ div[data-testid="stHeader"] { visibility: hidden; height: 0%; }
 /* Headers */
 h1, h2, h3, h4, h5, h6 {
     color: var(--primary-color) !important;
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: var(--font-family) !important;
 }
 
 /* Metric Values */

@@ -12,12 +12,9 @@ load_dotenv()
 
 st.set_page_config(page_title="Basement HQ", layout="wide")
 
-if 'red_alert' not in st.session_state:
-    st.session_state.red_alert = False
-
-if 'net_last_time' not in st.session_state:
-    st.session_state.net_last_time = time.time()
-    st.session_state.net_last_io = psutil.net_io_counters()
+# Theme & Personalization State Defaults
+if 'dashboard_theme' not in st.session_state:
+    st.session_state.dashboard_theme = os.getenv("DASHBOARD_THEME", "Default")
 
 # --- 2. HELPER FUNCTIONS ---
 
@@ -53,17 +50,36 @@ def inject_custom_css():
     with open(css_file) as f:
         style_content = f.read()
 
-    if st.session_state.red_alert:
-        theme_override = """
+    theme = st.session_state.dashboard_theme
+    theme_css = ""
+
+    if theme == "Red Alert":
+        theme_css = """
         :root {
             --primary-color: #ef4444 !important;
             --bg-color: #2b0a0a !important;
             --card-bg: #450a0a !important;
         }
         """
-        st.markdown(f'<style>{style_content}\n{theme_override}</style>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<style>{style_content}</style>', unsafe_allow_html=True)
+    elif theme == "Retro (Amber)":
+        theme_css = """
+        :root {
+            --primary-color: #ffb000 !important;
+            --bg-color: #000000 !important;
+            --card-bg: #1a1a1a !important;
+            --font-family: 'Courier New', monospace !important;
+        }
+        """
+    elif theme == "Cyberpunk (Neon)":
+        theme_css = """
+        :root {
+            --primary-color: #00ff41 !important;
+            --bg-color: #0b0014 !important;
+            --card-bg: #1a0b2e !important;
+        }
+        """
+
+    st.markdown(f'<style>{style_content}\n{theme_css}</style>', unsafe_allow_html=True)
 
 def get_weather():
     lat = os.getenv("OPEN_METEO_LAT", "45.57")
@@ -71,6 +87,7 @@ def get_weather():
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
     try:
         response = requests.get(url, timeout=3)
+        response.raise_for_status()
         data = response.json()
         temp = data['current_weather']['temperature']
         code = data['current_weather']['weathercode']
@@ -79,8 +96,13 @@ def get_weather():
         if code > 50: condition = "Rainy"
         if code > 70: condition = "Snow"
         return temp, condition
-    except:
+    except requests.exceptions.Timeout:
+        return "N/A", "Timeout"
+    except requests.exceptions.RequestException:
         return "N/A", "Offline"
+    except Exception:
+         return "N/A", "Error"
+
 
 def get_jellyfin_stats():
     # Load and Sanitize URL
@@ -121,7 +143,9 @@ def check_ping(host):
         sock = socket.create_connection((host, 80), timeout=1)
         sock.close()
         return True
-    except:
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return False
+    except Exception:
         return False
 
 def get_top_hogs():
@@ -138,22 +162,23 @@ def get_top_hogs():
         return df[['name', 'pid', 'memory_percent']]
     return pd.DataFrame()
 
+if 'net_last_time' not in st.session_state:
+    st.session_state.net_last_time = time.time()
+    st.session_state.net_last_io = psutil.net_io_counters()
+
 # --- 3. MAIN DASHBOARD ---
 @st.fragment(run_every=2)
 def render_dashboard():
     
-    # ROW 1: HEADER
+    # APP HEADER
+    app_title = os.getenv("APP_TITLE", "BASEMENT HQ // COMMAND")
+    app_logo = os.getenv("APP_LOGO", "")
+
     c1, c2 = st.columns([3, 1])
-    with c1: st.title("BASEMENT HQ // COMMAND")
-    with c2:
-        if st.toggle("🚨 RED ALERT", value=st.session_state.red_alert):
-            if not st.session_state.red_alert:
-                st.session_state.red_alert = True
-                st.rerun()
-        else:
-            if st.session_state.red_alert:
-                st.session_state.red_alert = False
-                st.rerun()
+    with c1:
+        if app_logo:
+             st.image(app_logo, width=50)
+        st.title(app_title)
 
     st.markdown("---")
 
@@ -227,8 +252,8 @@ def render_dashboard():
 
 # --- 4. ADMIN PANEL ---
 def render_admin_panel():
-    with st.expander("⚙️ System Configuration (Secure Vault)"):
-        st.write("Update Secrets. Saves to `.env`.")
+    with st.expander("⚙️ System & Personalization"):
+        st.write("Update Secrets & Theme. Saves to `.env`.")
         
         # Load Defaults
         c_lat = os.getenv("OPEN_METEO_LAT", "45.57")
@@ -236,8 +261,20 @@ def render_admin_panel():
         c_jf_url = os.getenv("JELLYFIN_URL", "http://192.168.0.200:8096")
         c_jf_key = os.getenv("JELLYFIN_API_KEY", "")
         c_ad_user = os.getenv("ADGUARD_USERNAME", "")
+        c_app_title = os.getenv("APP_TITLE", "BASEMENT HQ // COMMAND")
+        c_app_logo = os.getenv("APP_LOGO", "")
         
         with st.form("secrets"):
+            st.subheader("Personalization")
+            c_theme = st.selectbox("Dashboard Theme",
+                                   ["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"],
+                                   index=["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"].index(st.session_state.dashboard_theme) if st.session_state.dashboard_theme in ["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"] else 0)
+
+            p1, p2 = st.columns(2)
+            n_title = p1.text_input("App Title", c_app_title)
+            n_logo = p2.text_input("App Logo URL (Optional)", c_app_logo)
+
+            st.subheader("System Config")
             c1, c2 = st.columns(2)
             n_lat = c1.text_input("Lat", c_lat)
             n_lon = c2.text_input("Longitude", c_lon)
@@ -252,6 +289,11 @@ def render_admin_panel():
                 save_secrets("JELLYFIN_URL", n_url)
                 save_secrets("JELLYFIN_API_KEY", n_key)
                 save_secrets("ADGUARD_USERNAME", n_ad)
+                save_secrets("APP_TITLE", n_title)
+                save_secrets("APP_LOGO", n_logo)
+                save_secrets("DASHBOARD_THEME", c_theme)
+
+                st.session_state.dashboard_theme = c_theme
                 st.success("Saved! Reloading...")
                 time.sleep(1)
                 st.rerun()
