@@ -267,15 +267,17 @@ def render_command():
     
     with col_n:
         with st.container(border=True):
-            st.metric("DL", f"{rx/1024/1024:.2f} MB/s")
-            st.metric("UL", f"{tx/1024/1024:.2f} MB/s")
+            sub_c1, sub_c2 = st.columns(2)
+            sub_c1.metric("DL", f"{rx/1024/1024:.2f} MB/s")
+            sub_c2.metric("UL", f"{tx/1024/1024:.2f} MB/s")
 
     g_up = check_ping("google.com")
     gh_up = check_ping("github.com")
     with col_p:
         with st.container(border=True):
-            st.markdown(f"**Google:** {'🟢' if g_up else '🔴'}")
-            st.markdown(f"**GitHub:** {'🟢' if gh_up else '🔴'}")
+            sub_p1, sub_p2 = st.columns(2)
+            sub_p1.markdown(f"**Google:** {'🟢' if g_up else '🔴'}")
+            sub_p2.markdown(f"**GitHub:** {'🟢' if gh_up else '🔴'}")
 
     jf_label, jf_details = get_jellyfin_stats()
     with col_m:
