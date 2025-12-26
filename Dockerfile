@@ -12,7 +12,7 @@ RUN useradd -m appuser
 USER appuser
 
 # Copy the application code
-COPY app/ .
+COPY --chown=appuser:appuser app/ .
 
 # Expose Streamlit port
 EXPOSE 8501
