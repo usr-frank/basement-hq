@@ -15,7 +15,6 @@ st.set_page_config(page_title="Basement HQ", layout="wide")
 if 'red_alert' not in st.session_state:
     st.session_state.red_alert = False
 
-# For Network Speed Calculation
 if 'net_last_time' not in st.session_state:
     st.session_state.net_last_time = time.time()
     st.session_state.net_last_io = psutil.net_io_counters()
@@ -71,7 +70,7 @@ def get_weather():
     lon = os.getenv("OPEN_METEO_LONG", "-73.75")
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
     try:
-        response = requests.get(url, timeout=2)
+        response = requests.get(url, timeout=3)
         data = response.json()
         temp = data['current_weather']['temperature']
         code = data['current_weather']['weathercode']
@@ -84,24 +83,38 @@ def get_weather():
         return "N/A", "Offline"
 
 def get_jellyfin_stats():
-    base_url = os.getenv("JELLYFIN_URL", "http://192.168.0.200:8096")
+    # Load and Sanitize URL
+    base_url = os.getenv("JELLYFIN_URL", "http://192.168.0.200:8096").rstrip('/')
     api_key = os.getenv("JELLYFIN_API_KEY", "")
     
     if not api_key:
-        return 0, "No Key"
+        return 0, "⚠️ No API Key"
     
     headers = {"X-Emby-Token": api_key}
+    
     try:
-        # Get Sessions to see who is active
         url = f"{base_url}/Sessions"
-        r = requests.get(url, headers=headers, timeout=2)
+        # INCREASED TIMEOUT to 5 seconds
+        r = requests.get(url, headers=headers, timeout=5)
+        
         if r.status_code == 200:
             sessions = r.json()
+            # Success!
             return len(sessions), "Online"
+        elif r.status_code == 401:
+            return 0, "⛔ Unauthorized"
+        elif r.status_code == 403:
+            return 0, "⛔ Forbidden"
         else:
-            return 0, "Error"
-    except:
-        return 0, "Offline"
+            return 0, f"Error {r.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return 0, "⏱️ Timeout"
+    except requests.exceptions.ConnectionError:
+        return 0, "🔌 Connection Refused"
+    except Exception as e:
+        # Show specific error name for debugging
+        return 0, f"⚠️ {type(e).__name__}"
 
 def check_ping(host):
     try:
@@ -195,13 +208,17 @@ def render_dashboard():
             st.markdown(f"**Google:** {'🟢' if g_up else '🔴'}")
             st.markdown(f"**GitHub:** {'🟢' if gh_up else '🔴'}")
 
-    # Jellyfin Widget
+    # Jellyfin Widget (DEBUG MODE)
     jf_active, jf_status = get_jellyfin_stats()
     with media_col:
         with st.container(border=True):
+            # If status starts with emojis like ⛔ or ⏱️, display normally
+            # If it's Online, show Green
             st.metric("Jellyfin", jf_status)
             if jf_status == "Online":
                 st.caption(f"{jf_active} Active Streams")
+            elif "Error" in jf_status or "Key" in jf_status:
+                st.caption("Check Admin Panel")
 
     # ROW 4: HOGS
     st.subheader("System Processes")
@@ -223,7 +240,7 @@ def render_admin_panel():
         with st.form("secrets"):
             c1, c2 = st.columns(2)
             n_lat = c1.text_input("Lat", c_lat)
-            n_lon = c2.text_input("Lon", c_lon)
+            n_lon = c2.text_input("Longitude", c_lon)
             
             n_url = st.text_input("Jellyfin URL", c_jf_url)
             n_key = st.text_input("Jellyfin API Key", c_jf_key, type="password")
