@@ -1,0 +1,65 @@
+/* Modern Dark Dashboard Theme */
+
+/* Main Background */
+.stApp {
+    background-color: {{BG_COLOR}};
+    color: #ffffff;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+    color: {{ACCENT_COLOR}} !important;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+/* Metric Labels */
+div[data-testid="stMetricLabel"] > label {
+    color: #b0b0b0 !important;
+}
+
+/* Metric Values */
+div[data-testid="stMetricValue"] {
+    color: {{ACCENT_COLOR}} !important;
+}
+
+/* Card / Container Styling */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: {{CARD_BG}};
+    border: 1px solid {{ACCENT_COLOR}} !important;
+    border-radius: 10px;
+    padding: 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Progress Bar Color */
+div[data-testid="stProgress"] > div > div > div {
+    background-color: {{ACCENT_COLOR}} !important;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #252526;
+}
+
+/* Buttons (Generic) */
+button {
+    background-color: {{ACCENT_COLOR}} !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+
+/* --- KIOSK MODE / FULL SCREEN --- */
+/* Hide the Streamlit Hamburger Menu */
+div[data-testid="stToolbar"] {
+    display: none;
+}
+
+/* Hide the 'Made with Streamlit' Footer */
+footer {
+    visibility: hidden;
+}
+
+/* Hide the Deploy Button (header decoration) */
+div[data-testid="stHeader"] {
+    display: none;
+}
