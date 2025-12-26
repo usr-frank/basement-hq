@@ -23,27 +23,10 @@
 }
 
 /* --- KIOSK MODE (Hide Streamlit UI) --- */
-/* Hide the Hamburger Menu */
-div[data-testid="stToolbar"] {
-    visibility: hidden;
-    height: 0%;
-    position: fixed;
-}
-/* Hide the Footer */
-footer {
-    visibility: hidden;
-    height: 0%;
-}
-/* Hide the Deploy Button */
-div[data-testid="stHeader"] {
-    visibility: hidden;
-    height: 0%;
-}
-/* Add padding to top since header is gone */
-.block-container {
-    padding-top: 2rem !important;
-}
-
+div[data-testid="stToolbar"] { visibility: hidden; height: 0%; position: fixed; }
+footer { visibility: hidden; height: 0%; }
+div[data-testid="stHeader"] { visibility: hidden; height: 0%; }
+.block-container { padding-top: 2rem !important; }
 
 /* Headers */
 h1, h2, h3, h4, h5, h6 {
