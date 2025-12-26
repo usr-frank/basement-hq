@@ -4,3 +4,4 @@ watchdog
 requests
 pandas
 python-dotenv
+docker
