@@ -152,17 +152,39 @@ def get_jellyfin_stats():
     base_url = os.getenv("JELLYFIN_URL", "http://192.168.0.200:8096").rstrip('/')
     api_key = os.getenv("JELLYFIN_API_KEY", "")
     
-    if not api_key: return 0, "⚠️ No API Key"
+    if not api_key: return "⚠️ No Key", "Check Config"
     
     try:
         url = f"{base_url}/Sessions"
         r = requests.get(url, headers={"X-Emby-Token": api_key}, timeout=5)
         if r.status_code == 200:
-            return len(r.json()), "Online"
+            data = r.json()
+            active_streams = []
+            for s in data:
+                if "NowPlayingItem" in s:
+                    title = s["NowPlayingItem"].get("Name", "Unknown")
+                    user = s.get("UserName", "Someone")
+                    active_streams.append(f"{user} watching {title}")
+
+            count = len(active_streams)
+            if count == 0:
+                return "Online", "System Idle"
+
+            status_label = "1 Stream" if count == 1 else f"{count} Streams"
+
+            if count > 1:
+                details_text = f"{active_streams[0]} (+{count - 1} others)"
+            else:
+                details_text = active_streams[0]
+
+            return status_label, details_text
+
+        elif r.status_code == 401 or r.status_code == 403:
+            return "Auth Error", "Check API Key"
         else:
-            return 0, f"Error {r.status_code}"
+            return f"Error {r.status_code}", "Check Logs"
     except requests.exceptions.RequestException:
-        return 0, "Offline"
+        return "Offline", "Connection Lost"
 
 def check_ping(host):
     try:
@@ -245,21 +267,23 @@ def render_command():
     
     with col_n:
         with st.container(border=True):
-            st.metric("DL", f"{rx/1024/1024:.2f} MB/s")
-            st.metric("UL", f"{tx/1024/1024:.2f} MB/s")
+            sub_c1, sub_c2 = st.columns(2)
+            sub_c1.metric("DL", f"{rx/1024/1024:.2f} MB/s")
+            sub_c2.metric("UL", f"{tx/1024/1024:.2f} MB/s")
 
     g_up = check_ping("google.com")
     gh_up = check_ping("github.com")
     with col_p:
         with st.container(border=True):
-            st.markdown(f"**Google:** {'🟢' if g_up else '🔴'}")
-            st.markdown(f"**GitHub:** {'🟢' if gh_up else '🔴'}")
+            sub_p1, sub_p2 = st.columns(2)
+            sub_p1.markdown(f"**Google:** {'🟢' if g_up else '🔴'}")
+            sub_p2.markdown(f"**GitHub:** {'🟢' if gh_up else '🔴'}")
 
-    jf_active, jf_status = get_jellyfin_stats()
+    jf_label, jf_details = get_jellyfin_stats()
     with col_m:
         with st.container(border=True):
-            st.metric("Jellyfin", jf_status)
-            if jf_status == "Online": st.caption(f"{jf_active} Streams")
+            st.metric("Jellyfin", jf_label)
+            st.caption(jf_details)
 
 @st.fragment(run_every=5)
 def render_docker_fleet():
