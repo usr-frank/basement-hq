@@ -6,6 +6,7 @@ import pandas as pd
 import socket
 import os
 import docker
+import docker.errors
 from dotenv import load_dotenv
 
 # --- 1. CONFIGURATION & STATE ---
@@ -52,8 +53,11 @@ def inject_custom_css():
     if not os.path.exists(css_file):
         css_file = "style.css"
     
-    with open(css_file) as f:
-        style_content = f.read()
+    if os.path.exists(css_file):
+        with open(css_file) as f:
+            style_content = f.read()
+    else:
+        style_content = ""
 
     theme = st.session_state.dashboard_theme
     theme_css = ""
@@ -88,7 +92,7 @@ def get_weather():
         if code > 50: condition = "Rainy"
         if code > 70: condition = "Snow"
         return temp, condition
-    except:
+    except (requests.exceptions.RequestException, KeyError):
         return "N/A", "Offline"
 
 def get_jellyfin_stats():
@@ -104,7 +108,7 @@ def get_jellyfin_stats():
             return len(r.json()), "Online"
         else:
             return 0, f"Error {r.status_code}"
-    except:
+    except requests.exceptions.RequestException:
         return 0, "Offline"
 
 def check_ping(host):
@@ -112,16 +116,19 @@ def check_ping(host):
         sock = socket.create_connection((host, 80), timeout=1)
         sock.close()
         return True
-    except:
+    except (socket.timeout, socket.error, OSError):
         return False
 
 def get_top_hogs():
     # Returns real processes from Host because we use pid: host
     processes = []
+    # Handle specific psutil exceptions safely
     for proc in psutil.process_iter(['pid', 'name', 'memory_percent']):
         try:
             processes.append(proc.info)
-        except: pass
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+
     df = pd.DataFrame(processes)
     if not df.empty:
         df = df.sort_values(by='memory_percent', ascending=False).head(10)
@@ -129,19 +136,39 @@ def get_top_hogs():
         return df[['name', 'pid', 'memory_percent']]
     return pd.DataFrame()
 
-def get_docker_containers():
+@st.cache_resource
+def get_docker_client():
     try:
-        client = docker.from_env()
-        containers = client.containers.list()
+        return docker.from_env()
+    except Exception:
+        return None
+
+def get_docker_containers():
+    client = get_docker_client()
+    if not client:
+        return pd.DataFrame()
+
+    try:
+        # Use all=True to get exited containers as well, so we can show red status
+        containers = client.containers.list(all=True)
         data = []
         for c in containers:
+            status_val = c.status
+            # Add emojis for badge-like appearance
+            if status_val == 'running':
+                display_status = "🟢 Running"
+            elif status_val == 'exited':
+                display_status = "🔴 Exited"
+            else:
+                display_status = f"⚪ {status_val.capitalize()}"
+
             data.append({
                 "Name": c.name,
-                "Status": c.status,
+                "Status": display_status,
                 "Image": c.image.tags[0] if c.image.tags else c.image.id[:12]
             })
         return pd.DataFrame(data)
-    except Exception:
+    except (docker.errors.DockerException, docker.errors.APIError):
         return pd.DataFrame()
 
 # --- 3. TABS & FRAGMENTS ---
@@ -192,7 +219,22 @@ def render_docker_fleet():
     if not df.empty:
         # Filter hidden
         df = df[~df['Name'].isin(hidden_list)]
-        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # Display with specific column configuration for Status "pill" look
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Status": st.column_config.TextColumn(
+                    "Status",
+                    help="Container health status",
+                    width="medium"
+                ),
+                "Name": st.column_config.TextColumn("Container Name"),
+                "Image": st.column_config.TextColumn("Image")
+            }
+        )
     else:
         st.warning("No containers found or Docker socket not connected.")
 
@@ -285,6 +327,12 @@ def render_admin():
 if __name__ == "__main__":
     inject_custom_css()
     
+    # Sidebar
+    with st.sidebar:
+        st.header("Control")
+        if st.button("🔄 Refresh Data", type="primary"):
+            st.rerun()
+
     app_title = os.getenv("APP_TITLE", "BASEMENT HQ // COMMAND")
     app_logo = os.getenv("APP_LOGO", "")
     
