@@ -13,7 +13,7 @@ load_dotenv()
 
 st.set_page_config(page_title="Basement HQ", layout="wide")
 
-# Theme & Personalization State Defaults
+# Initialize Session State
 if 'dashboard_theme' not in st.session_state:
     st.session_state.dashboard_theme = os.getenv("DASHBOARD_THEME", "Default")
 
@@ -60,28 +60,15 @@ def inject_custom_css():
 
     if theme == "Red Alert":
         theme_css = """
-        :root {
-            --primary-color: #ef4444 !important;
-            --bg-color: #2b0a0a !important;
-            --card-bg: #450a0a !important;
-        }
+        :root { --primary-color: #ef4444 !important; --bg-color: #2b0a0a !important; --card-bg: #450a0a !important; }
         """
     elif theme == "Retro (Amber)":
         theme_css = """
-        :root {
-            --primary-color: #ffb000 !important;
-            --bg-color: #000000 !important;
-            --card-bg: #1a1a1a !important;
-            --font-family: 'Courier New', monospace !important;
-        }
+        :root { --primary-color: #ffb000 !important; --bg-color: #000000 !important; --card-bg: #1a1a1a !important; --font-family: 'Courier New', monospace !important; }
         """
     elif theme == "Cyberpunk (Neon)":
         theme_css = """
-        :root {
-            --primary-color: #00ff41 !important;
-            --bg-color: #0b0014 !important;
-            --card-bg: #1a0b2e !important;
-        }
+        :root { --primary-color: #00ff41 !important; --bg-color: #0b0014 !important; --card-bg: #1a0b2e !important; }
         """
 
     st.markdown(f'<style>{style_content}\n{theme_css}</style>', unsafe_allow_html=True)
@@ -101,65 +88,40 @@ def get_weather():
         if code > 50: condition = "Rainy"
         if code > 70: condition = "Snow"
         return temp, condition
-    except requests.exceptions.Timeout:
-        return "N/A", "Timeout"
-    except requests.exceptions.RequestException:
+    except:
         return "N/A", "Offline"
-    except Exception:
-         return "N/A", "Error"
-
 
 def get_jellyfin_stats():
-    # Load and Sanitize URL
     base_url = os.getenv("JELLYFIN_URL", "http://192.168.0.200:8096").rstrip('/')
     api_key = os.getenv("JELLYFIN_API_KEY", "")
     
-    if not api_key:
-        return 0, "⚠️ No API Key"
-    
-    headers = {"X-Emby-Token": api_key}
+    if not api_key: return 0, "⚠️ No API Key"
     
     try:
         url = f"{base_url}/Sessions"
-        # INCREASED TIMEOUT to 5 seconds
-        r = requests.get(url, headers=headers, timeout=5)
-        
+        r = requests.get(url, headers={"X-Emby-Token": api_key}, timeout=5)
         if r.status_code == 200:
-            sessions = r.json()
-            # Success!
-            return len(sessions), "Online"
-        elif r.status_code == 401:
-            return 0, "⛔ Unauthorized"
-        elif r.status_code == 403:
-            return 0, "⛔ Forbidden"
+            return len(r.json()), "Online"
         else:
             return 0, f"Error {r.status_code}"
-            
-    except requests.exceptions.Timeout:
-        return 0, "⏱️ Timeout"
-    except requests.exceptions.ConnectionError:
-        return 0, "🔌 Connection Refused"
-    except Exception as e:
-        # Show specific error name for debugging
-        return 0, f"⚠️ {type(e).__name__}"
+    except:
+        return 0, "Offline"
 
 def check_ping(host):
     try:
         sock = socket.create_connection((host, 80), timeout=1)
         sock.close()
         return True
-    except (socket.timeout, ConnectionRefusedError, OSError):
-        return False
-    except Exception:
+    except:
         return False
 
 def get_top_hogs():
+    # Returns real processes from Host because we use pid: host
     processes = []
     for proc in psutil.process_iter(['pid', 'name', 'memory_percent']):
         try:
             processes.append(proc.info)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
+        except: pass
     df = pd.DataFrame(processes)
     if not df.empty:
         df = df.sort_values(by='memory_percent', ascending=False).head(10)
@@ -179,22 +141,19 @@ def get_docker_containers():
                 "Image": c.image.tags[0] if c.image.tags else c.image.id[:12]
             })
         return pd.DataFrame(data)
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 # --- 3. TABS & FRAGMENTS ---
 
 @st.fragment(run_every=2)
 def render_command():
-    # ROW 2: ENVIRONMENT
+    # ROW 1: Weather & Network
     col_w, col_n, col_p, col_m = st.columns(4)
-
-    # Weather
     temp, cond = get_weather()
     with col_w:
         with st.container(border=True): st.metric("Weather", f"{temp}°C", cond)
 
-    # Network
     now = time.time()
     current_io = psutil.net_io_counters()
     dt = now - st.session_state.net_last_time
@@ -209,7 +168,6 @@ def render_command():
             st.metric("DL", f"{rx/1024/1024:.2f} MB/s")
             st.metric("UL", f"{tx/1024/1024:.2f} MB/s")
 
-    # Ping
     g_up = check_ping("google.com")
     gh_up = check_ping("github.com")
     with col_p:
@@ -217,19 +175,17 @@ def render_command():
             st.markdown(f"**Google:** {'🟢' if g_up else '🔴'}")
             st.markdown(f"**GitHub:** {'🟢' if gh_up else '🔴'}")
 
-    # Jellyfin
     jf_active, jf_status = get_jellyfin_stats()
     with col_m:
         with st.container(border=True):
             st.metric("Jellyfin", jf_status)
-            if jf_status == "Online":
-                st.caption(f"{jf_active} Streams")
+            if jf_status == "Online": st.caption(f"{jf_active} Streams")
 
 @st.fragment(run_every=5)
 def render_docker_fleet():
     st.subheader("🐳 Docker Fleet")
     df = get_docker_containers()
-
+    
     hidden_str = os.getenv("HIDDEN_CONTAINERS", "")
     hidden_list = [x.strip() for x in hidden_str.split(",") if x.strip()]
 
@@ -242,7 +198,6 @@ def render_docker_fleet():
 
 @st.fragment(run_every=2)
 def render_system():
-    # Metrics
     c1, c2, c3 = st.columns(3)
     cpu = psutil.cpu_percent(interval=None)
     ram = psutil.virtual_memory().percent
@@ -268,9 +223,7 @@ def render_system():
 
 def render_admin():
     st.header("⚙️ Admin Panel")
-    st.write("System Configuration & Personalization")
-
-    # Load Defaults
+    
     c_lat = os.getenv("OPEN_METEO_LAT", "45.57")
     c_lon = os.getenv("OPEN_METEO_LONG", "-73.75")
     c_jf_url = os.getenv("JELLYFIN_URL", "http://192.168.0.200:8096")
@@ -279,41 +232,38 @@ def render_admin():
     c_ad_pass = os.getenv("ADGUARD_PASSWORD", "")
     c_app_title = os.getenv("APP_TITLE", "BASEMENT HQ // COMMAND")
     c_app_logo = os.getenv("APP_LOGO", "")
-
+    
     c_hidden = os.getenv("HIDDEN_CONTAINERS", "")
     current_hidden = [x.strip() for x in c_hidden.split(",") if x.strip()]
-
-    # Get all containers for multiselect options
+    
+    # Get container options
     df_containers = get_docker_containers()
-    all_container_names = df_containers['Name'].tolist() if not df_containers.empty else []
-    # Ensure current hidden ones are in options even if offline
+    all_names = df_containers['Name'].tolist() if not df_containers.empty else []
     for h in current_hidden:
-        if h not in all_container_names:
-            all_container_names.append(h)
+        if h not in all_names: all_names.append(h)
 
     with st.form("secrets"):
         st.subheader("Personalization")
-        c_theme = st.selectbox("Dashboard Theme",
-                                ["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"],
-                                index=["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"].index(st.session_state.dashboard_theme) if st.session_state.dashboard_theme in ["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"] else 0)
-
+        c_theme = st.selectbox("Dashboard Theme", 
+            ["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"],
+            index=["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"].index(st.session_state.dashboard_theme) if st.session_state.dashboard_theme in ["Default (Green)", "Red Alert", "Retro (Amber)", "Cyberpunk (Neon)"] else 0)
+        
         p1, p2 = st.columns(2)
         n_title = p1.text_input("App Title", c_app_title)
-        n_logo = p2.text_input("App Logo URL (Optional)", c_app_logo)
+        n_logo = p2.text_input("App Logo URL", c_app_logo)
 
-        st.subheader("Docker Configuration")
-        n_hidden_list = st.multiselect("Hide Containers", options=all_container_names, default=current_hidden)
+        st.subheader("Docker Config")
+        n_hidden = st.multiselect("Hide Containers", options=all_names, default=current_hidden)
 
-        st.subheader("System Config")
+        st.subheader("System Secrets")
         c1, c2 = st.columns(2)
         n_lat = c1.text_input("Lat", c_lat)
-        n_lon = c2.text_input("Longitude", c_lon)
-        
+        n_lon = c2.text_input("Lon", c_lon)
         n_url = st.text_input("Jellyfin URL", c_jf_url)
-        n_key = st.text_input("Jellyfin API Key", c_jf_key, type="password")
+        n_key = st.text_input("Jellyfin Key", c_jf_key, type="password")
         n_ad = st.text_input("AdGuard User", c_ad_user)
         n_ad_pass = st.text_input("AdGuard Password", c_ad_pass, type="password")
-        
+
         if st.form_submit_button("💾 Save"):
             save_secrets("OPEN_METEO_LAT", n_lat)
             save_secrets("OPEN_METEO_LONG", n_lon)
@@ -324,7 +274,7 @@ def render_admin():
             save_secrets("APP_TITLE", n_title)
             save_secrets("APP_LOGO", n_logo)
             save_secrets("DASHBOARD_THEME", c_theme)
-            save_secrets("HIDDEN_CONTAINERS", ",".join(n_hidden_list))
+            save_secrets("HIDDEN_CONTAINERS", ",".join(n_hidden))
             
             st.session_state.dashboard_theme = c_theme
             st.success("Saved! Reloading...")
@@ -334,23 +284,18 @@ def render_admin():
 # --- MAIN ENTRY ---
 if __name__ == "__main__":
     inject_custom_css()
-
-    # Header
+    
     app_title = os.getenv("APP_TITLE", "BASEMENT HQ // COMMAND")
     app_logo = os.getenv("APP_LOGO", "")
+    
     c1, c2 = st.columns([3, 1])
     with c1:
-        if app_logo:
-             st.image(app_logo, width=50)
+        if app_logo: st.image(app_logo, width=50)
         st.title(app_title)
 
     tab1, tab2, tab3, tab4 = st.tabs(["🏠 Command", "🐳 Docker Fleet", "🧠 System Intelligence", "⚙️ Admin"])
-
-    with tab1:
-        render_command()
-    with tab2:
-        render_docker_fleet()
-    with tab3:
-        render_system()
-    with tab4:
-        render_admin()
+    
+    with tab1: render_command()
+    with tab2: render_docker_fleet()
+    with tab3: render_system()
+    with tab4: render_admin()
