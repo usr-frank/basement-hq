@@ -123,13 +123,12 @@ def inject_custom_css():
 
     # Global Font Injection
     global_font_css = f"""
-    {font_import}
     html, body, [class*="css"] {{
         font-family: {font_family} !important;
     }}
     """
 
-    st.markdown(f'<style>{style_content}\n{theme_css}\n{global_font_css}\n{bg_css}</style>', unsafe_allow_html=True)
+    st.markdown(f'<style>{font_import}\n{theme_css}\n{style_content}\n{global_font_css}\n{bg_css}</style>', unsafe_allow_html=True)
 
 def get_weather():
     lat = os.getenv("OPEN_METEO_LAT", "45.57")
