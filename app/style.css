@@ -4,7 +4,7 @@
 :root {
     --primary-color: #10b981; /* Emerald Green */
     --bg-color: #1e1e1e;
-    --card-bg: #1a1a1a;
+    --card-bg: rgba(26, 26, 26, 0.8); /* Semi-transparent default */
     --text-color: #ffffff;
     --font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
@@ -17,11 +17,15 @@
     transition: background-color 0.5s ease;
 }
 
-/* --- KIOSK MODE (Hide Streamlit UI) --- */
+/* --- UI CLEANUP --- */
+/* Hide standard Streamlit header */
+header { visibility: hidden; }
+div[data-testid="stHeader"] { visibility: hidden; height: 0%; }
 div[data-testid="stToolbar"] { visibility: hidden; height: 0%; position: fixed; }
 footer { visibility: hidden; height: 0%; }
-div[data-testid="stHeader"] { visibility: hidden; height: 0%; }
-.block-container { padding-top: 2rem !important; }
+
+/* Content padding - Start at top */
+.block-container { padding-top: 1rem !important; }
 
 /* Headers */
 h1, h2, h3, h4, h5, h6 {
@@ -34,10 +38,15 @@ div[data-testid="stMetricValue"] {
     color: var(--primary-color) !important;
 }
 
-/* Cards / Containers */
-div[data-testid="stVerticalBlockBorderWrapper"] {
-    background-color: var(--card-bg);
-    border: 1px solid var(--primary-color) !important;
+/* --- GLASSMORPHISM --- */
+/* Apply to Metrics and Containers */
+div[data-testid="stMetric"],
+div[data-testid="stVerticalBlockBorderWrapper"],
+div.stContainer {
+    background-color: var(--card-bg) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
     border-radius: 10px;
     padding: 1rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
@@ -54,4 +63,5 @@ div.stButton > button {
     background-color: var(--primary-color) !important;
     color: #ffffff !important;
     border: none !important;
+    font-weight: bold;
 }
